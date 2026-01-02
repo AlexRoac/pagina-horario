@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Alex & Su</title>
+    <title>Alex & Su - Gestor de Horarios</title>
     <style>
         * {
             margin: 0;
@@ -566,6 +566,14 @@
             font-size: 12px;
             color: #2e7d32;
         }
+
+        /* Estilo para el botón de importar */
+        .btn-import {
+            background: #4CAF50 !important;
+        }
+        .btn-import:hover {
+            background: #388E3C !important;
+        }
     </style>
 </head>
 <body>
@@ -635,6 +643,9 @@
                 </select>
             </div>
             <button onclick="createSchedule()">➕ Crear Horario</button>
+            
+            <button class="btn-import" onclick="document.getElementById('importInput').click()">📥 Importar Horario</button>
+            <input type="file" id="importInput" style="display: none;" accept=".json" onchange="importSchedule(this)">
         </div>
 
         <div class="sidebar" id="scheduleTabs"></div>
@@ -701,8 +712,6 @@
         <div class="modal-content modal-content-custom">
             <button class="close-modal" onclick="closeCustomizeModal()">×</button>
             <h2>🎨 Personalizar Página</h2>
-            <p style="color: #666; margin-bottom: 15px;">Personaliza los colores e imágenes de fondo de tu gestor de horarios:</p>
-            
             <div class="customization-controls">
                 <div class="custom-group">
                     <label>🖼️ Color de Fondo del Body:</label>
@@ -710,7 +719,6 @@
                     <button onclick="applyBodyColor()">Aplicar Color</button>
                     <div class="preview-box" id="bodyPreview">Selecciona un color y aplícalo</div>
                 </div>
-                
                 <div class="custom-group">
                     <label>📸 Imagen de Fondo del Body:</label>
                     <input type="file" id="bodyImage" accept="image/*">
@@ -718,14 +726,12 @@
                     <button onclick="removeBodyBackground()">Quitar Fondo del Body</button>
                     <div class="preview-box" id="bodyImagePreview">Sube una imagen y aplícala</div>
                 </div>
-                
                 <div class="custom-group">
                     <label>🎨 Color de Fondo del Header:</label>
                     <input type="color" id="headerColor" value="#667eea">
                     <button onclick="applyHeaderColor()">Aplicar Color</button>
                     <div class="preview-box" id="headerPreview">Selecciona un color y aplícalo</div>
                 </div>
-                
                 <div class="custom-group">
                     <label>🖼️ Imagen de Fondo del Header:</label>
                     <input type="file" id="headerImage" accept="image/*">
@@ -734,7 +740,6 @@
                     <div class="preview-box" id="headerImagePreview">Sube una imagen y aplícala</div>
                 </div>
             </div>
-
             <div class="modal-buttons" style="margin-top: 20px;">
                 <button class="btn-primary" onclick="closeCustomizeModal()">✅ Cerrar</button>
             </div>
@@ -755,168 +760,82 @@
             headerImage: null
         };
 
-        function saveCustomization() {
-            localStorage.setItem('customization', JSON.stringify(customization));
-        }
+        // --- FUNCIONES DE PERSONALIZACIÓN ---
+        function saveCustomization() { localStorage.setItem('customization', JSON.stringify(customization)); }
 
         function applyBodyColor() {
             const color = document.getElementById('bodyColor').value;
-            customization.bodyColor = color;
-            customization.bodyImage = null;
-            document.body.style.background = color;
-            document.body.style.backgroundImage = 'none';
+            customization.bodyColor = color; customization.bodyImage = null;
+            document.body.style.background = color; document.body.style.backgroundImage = 'none';
             saveCustomization();
-            document.getElementById('bodyPreview').textContent = `✅ Color aplicado: ${color}`;
         }
 
         function applyBodyImage() {
             const fileInput = document.getElementById('bodyImage');
             const file = fileInput.files[0];
-            if (!file) {
-                alert('Por favor selecciona una imagen primero');
-                return;
-            }
-
+            if (!file) return;
             const reader = new FileReader();
-            reader.onload = function(e) {
-                const imageData = e.target.result;
-                customization.bodyImage = imageData;
+            reader.onload = (e) => {
+                customization.bodyImage = e.target.result;
                 customization.bodyColor = null;
-                document.body.style.backgroundImage = `url(${imageData})`;
-                document.body.style.backgroundSize = 'cover';
-                document.body.style.backgroundPosition = 'center';
+                document.body.style.backgroundImage = `url(${e.target.result})`;
                 document.body.style.backgroundAttachment = 'fixed';
                 saveCustomization();
-                document.getElementById('bodyImagePreview').textContent = `✅ Imagen aplicada: ${file.name}`;
             };
             reader.readAsDataURL(file);
         }
 
         function removeBodyBackground() {
-            customization.bodyColor = null;
-            customization.bodyImage = null;
+            customization.bodyColor = null; customization.bodyImage = null;
             document.body.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-            document.body.style.backgroundImage = '';
-            document.body.style.backgroundSize = '';
-            document.body.style.backgroundPosition = '';
-            document.body.style.backgroundAttachment = '';
             saveCustomization();
-            document.getElementById('bodyPreview').textContent = '🔄 Fondo restaurado al original';
-            document.getElementById('bodyImagePreview').textContent = '🔄 Fondo restaurado al original';
-            document.getElementById('bodyImage').value = '';
         }
 
         function applyHeaderColor() {
             const color = document.getElementById('headerColor').value;
-            customization.headerColor = color;
-            customization.headerImage = null;
-            const header = document.querySelector('.header');
-            header.style.background = color;
-            header.style.backgroundImage = 'none';
+            customization.headerColor = color; customization.headerImage = null;
+            document.querySelector('.header').style.background = color;
             saveCustomization();
-            document.getElementById('headerPreview').textContent = `✅ Color aplicado: ${color}`;
         }
 
         function applyHeaderImage() {
-            const fileInput = document.getElementById('headerImage');
-            const file = fileInput.files[0];
-            if (!file) {
-                alert('Por favor selecciona una imagen primero');
-                return;
-            }
-
+            const file = document.getElementById('headerImage').files[0];
+            if (!file) return;
             const reader = new FileReader();
-            reader.onload = function(e) {
-                const imageData = e.target.result;
-                customization.headerImage = imageData;
-                customization.headerColor = null;
-                const header = document.querySelector('.header');
-                header.style.backgroundImage = `url(${imageData})`;
-                header.style.backgroundSize = 'cover';
-                header.style.backgroundPosition = 'center';
+            reader.onload = (e) => {
+                customization.headerImage = e.target.result;
+                document.querySelector('.header').style.backgroundImage = `url(${e.target.result})`;
                 saveCustomization();
-                document.getElementById('headerImagePreview').textContent = `✅ Imagen aplicada: ${file.name}`;
             };
             reader.readAsDataURL(file);
         }
 
         function removeHeaderBackground() {
-            customization.headerColor = null;
-            customization.headerImage = null;
-            const header = document.querySelector('.header');
-            header.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-            header.style.backgroundImage = '';
-            header.style.backgroundSize = '';
-            header.style.backgroundPosition = '';
+            customization.headerColor = null; customization.headerImage = null;
+            document.querySelector('.header').style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
             saveCustomization();
-            document.getElementById('headerPreview').textContent = '🔄 Fondo restaurado al original';
-            document.getElementById('headerImagePreview').textContent = '🔄 Fondo restaurado al original';
-            document.getElementById('headerImage').value = '';
         }
 
         function applyCustomization() {
             if (customization.bodyImage) {
                 document.body.style.backgroundImage = `url(${customization.bodyImage})`;
-                document.body.style.backgroundSize = 'cover';
-                document.body.style.backgroundPosition = 'center';
                 document.body.style.backgroundAttachment = 'fixed';
-                document.body.style.background = '';
-            } else if (customization.bodyColor) {
-                document.body.style.background = customization.bodyColor;
-                document.body.style.backgroundImage = 'none';
-            }
+            } else if (customization.bodyColor) document.body.style.background = customization.bodyColor;
 
-            const header = document.querySelector('.header');
-            if (customization.headerImage) {
-                header.style.backgroundImage = `url(${customization.headerImage})`;
-                header.style.backgroundSize = 'cover';
-                header.style.backgroundPosition = 'center';
-                header.style.background = '';
-            } else if (customization.headerColor) {
-                header.style.background = customization.headerColor;
-                header.style.backgroundImage = 'none';
-            }
+            if (customization.headerImage) document.querySelector('.header').style.backgroundImage = `url(${customization.headerImage})`;
+            else if (customization.headerColor) document.querySelector('.header').style.background = customization.headerColor;
         }
 
-        function openCustomizeModal() {
-            document.getElementById('customizeModal').style.display = 'block';
-            
-            // Pre-cargar valores actuales
-            if (customization.bodyColor) {
-                document.getElementById('bodyColor').value = customization.bodyColor;
-                document.getElementById('bodyPreview').textContent = `Color actual: ${customization.bodyColor}`;
-            }
-            if (customization.headerColor) {
-                document.getElementById('headerColor').value = customization.headerColor;
-                document.getElementById('headerPreview').textContent = `Color actual: ${customization.headerColor}`;
-            }
-            if (customization.bodyImage) {
-                document.getElementById('bodyImagePreview').textContent = '✅ Imagen del body aplicada';
-            }
-            if (customization.headerImage) {
-                document.getElementById('headerImagePreview').textContent = '✅ Imagen del header aplicada';
-            }
-        }
-
-        function closeCustomizeModal() {
-            document.getElementById('customizeModal').style.display = 'none';
-        }
-
+        // --- FUNCIONES DE HORARIOS ---
         function getHoursArray(start, end) {
             const hours = [];
-            for (let i = start; i < end; i++) {
-                hours.push(`${i.toString().padStart(2, '0')}:00`);
-            }
+            for (let i = start; i < end; i++) hours.push(`${i.toString().padStart(2, '0')}:00`);
             return hours;
         }
 
-        function generateId() {
-            return Date.now().toString(36) + Math.random().toString(36).substr(2);
-        }
+        function generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2); }
 
-        function saveSchedules() {
-            localStorage.setItem('schedules', JSON.stringify(schedules));
-        }
+        function saveSchedules() { localStorage.setItem('schedules', JSON.stringify(schedules)); }
 
         function createSchedule() {
             const name = document.getElementById('scheduleName').value.trim();
@@ -924,51 +843,61 @@
             const startHour = parseInt(document.getElementById('startHour').value);
             const endHour = parseInt(document.getElementById('endHour').value);
 
-            if (!name) {
-                alert('Por favor ingresa un nombre para el horario');
-                return;
-            }
+            if (!name) { alert('Por favor ingresa un nombre'); return; }
+            if (startHour >= endHour) { alert('La hora inicio debe ser menor a la fin'); return; }
 
-            if (startHour >= endHour) {
-                alert('La hora de inicio debe ser menor que la hora de fin');
-                return;
-            }
-
-            const schedule = {
-                id: generateId(),
-                name: name,
-                owner: owner,
-                startHour: startHour,
-                endHour: endHour,
-                data: {}
-            };
-
+            const schedule = { id: generateId(), name, owner, startHour, endHour, data: {} };
             schedules.push(schedule);
             saveSchedules();
-            
-            document.getElementById('scheduleName').value = '';
-            document.getElementById('scheduleOwner').value = '';
-            
             renderScheduleTabs();
             loadSchedule(schedule.id);
+            document.getElementById('scheduleName').value = '';
+        }
+
+        // --- NUEVA FUNCIÓN DE IMPORTACIÓN ---
+        function importSchedule(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    
+                    // Validación mínima de estructura
+                    if (!importedData.name || !importedData.data) {
+                        throw new Error("Formato inválido");
+                    }
+
+                    // Generamos un nuevo ID para evitar duplicados si se importa el mismo archivo
+                    importedData.id = generateId();
+                    
+                    schedules.push(importedData);
+                    saveSchedules();
+                    renderScheduleTabs();
+                    loadSchedule(importedData.id);
+                    
+                    alert(`✅ Horario "${importedData.name}" importado con éxito.`);
+                    input.value = ''; // Limpiar el input
+                } catch (err) {
+                    alert("❌ Error: El archivo no es un horario válido.");
+                }
+            };
+            reader.readAsText(file);
         }
 
         function renderScheduleTabs() {
             const tabs = document.getElementById('scheduleTabs');
-            
-            if (schedules.length === 0) {
-                tabs.innerHTML = '<p style="color: #999;">No hay horarios creados</p>';
-                return;
-            }
+            if (schedules.length === 0) { tabs.innerHTML = '<p>No hay horarios</p>'; return; }
 
-            tabs.innerHTML = schedules.map(schedule => `
-                <div class="schedule-tab ${schedule.id === currentScheduleId ? 'active' : ''}" onclick="loadSchedule('${schedule.id}')">
-                    <div><strong>${schedule.name}</strong></div>
-                    <div style="font-size: 12px; color: #666;">${schedule.owner || 'Sin asignar'}</div>
+            tabs.innerHTML = schedules.map(s => `
+                <div class="schedule-tab ${s.id === currentScheduleId ? 'active' : ''}" onclick="loadSchedule('${s.id}')">
+                    <div><strong>${s.name}</strong></div>
+                    <div style="font-size: 11px;">${s.owner || 'N/A'}</div>
                     <div class="schedule-actions">
-                        <button class="btn-edit" onclick="event.stopPropagation(); openEditModal('${schedule.id}')">✏️</button>
-                        <button class="btn-delete" onclick="event.stopPropagation(); deleteSchedule('${schedule.id}')">🗑️</button>
-                        <button class="btn-download" onclick="event.stopPropagation(); downloadSchedule('${schedule.id}')">⬇️</button>
+                        <button class="btn-edit" onclick="event.stopPropagation(); openEditModal('${s.id}')">✏️</button>
+                        <button class="btn-delete" onclick="event.stopPropagation(); deleteSchedule('${s.id}')">🗑️</button>
+                        <button class="btn-download" onclick="event.stopPropagation(); downloadSchedule('${s.id}')">⬇️</button>
                     </div>
                 </div>
             `).join('');
@@ -977,27 +906,19 @@
         function loadSchedule(id) {
             currentScheduleId = id;
             const schedule = schedules.find(s => s.id === id);
-            
             if (!schedule) return;
-
             renderScheduleTabs();
             
             const hours = getHoursArray(schedule.startHour, schedule.endHour);
-            
             const container = document.getElementById('scheduleContainer');
+            
             container.innerHTML = `
                 <div class="schedule-info">
                     <h2>${schedule.name}</h2>
-                    <p>Para: ${schedule.owner || 'Sin asignar'}</p>
-                    <p>Horario: ${schedule.startHour.toString().padStart(2, '0')}:00 - ${schedule.endHour.toString().padStart(2, '0')}:00</p>
+                    <p>Para: ${schedule.owner || 'Sin asignar'} | ${schedule.startHour}:00 - ${schedule.endHour}:00</p>
                 </div>
                 <table>
-                    <thead>
-                        <tr>
-                            <th>Hora</th>
-                            ${days.map(day => `<th>${day}</th>`).join('')}
-                        </tr>
-                    </thead>
+                    <thead><tr><th>Hora</th>${days.map(d => `<th>${d}</th>`).join('')}</tr></thead>
                     <tbody>
                         ${hours.map(hour => `
                             <tr>
@@ -1006,11 +927,8 @@
                                     const key = `${day}-${hour}`;
                                     const cell = schedule.data[key] || { text: '', color: '#ffffff' };
                                     return `
-                                        <td class="schedule-cell" style="background-color: ${cell.color}" 
-                                            onclick="editCell('${id}', '${key}', this)">
-                                            <input type="text" value="${cell.text}" 
-                                                   onchange="updateCell('${id}', '${key}', this.value)"
-                                                   onclick="event.stopPropagation()">
+                                        <td class="schedule-cell" style="background-color: ${cell.color}" onclick="editCell('${id}', '${key}', this)">
+                                            <input type="text" value="${cell.text}" onchange="updateCell('${id}', '${key}', this.value)" onclick="event.stopPropagation()">
                                         </td>
                                     `;
                                 }).join('')}
@@ -1021,226 +939,105 @@
             `;
         }
 
-        function editCell(scheduleId, key, element) {
-            const schedule = schedules.find(s => s.id === scheduleId);
-            if (!schedule.data[key]) {
-                schedule.data[key] = { text: '', color: '#ffffff' };
-            }
-            schedule.data[key].color = selectedColor;
-            element.style.backgroundColor = selectedColor;
+        function editCell(sid, key, el) {
+            const s = schedules.find(x => x.id === sid);
+            if (!s.data[key]) s.data[key] = { text: '', color: '#fff' };
+            s.data[key].color = selectedColor;
+            el.style.backgroundColor = selectedColor;
             saveSchedules();
         }
 
-        function updateCell(scheduleId, key, value) {
-            const schedule = schedules.find(s => s.id === scheduleId);
-            if (!schedule.data[key]) {
-                schedule.data[key] = { text: '', color: '#ffffff' };
-            }
-            schedule.data[key].text = value;
+        function updateCell(sid, key, val) {
+            const s = schedules.find(x => x.id === sid);
+            if (!s.data[key]) s.data[key] = { text: '', color: '#fff' };
+            s.data[key].text = val;
             saveSchedules();
         }
 
-        function selectColor(color) {
-            selectedColor = color;
-            document.querySelectorAll('.color-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
+        function selectColor(c) {
+            selectedColor = c;
+            document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
             event.target.classList.add('active');
         }
 
         function openEditModal(id) {
             editingScheduleId = id;
-            const schedule = schedules.find(s => s.id === id);
-            document.getElementById('editName').value = schedule.name;
-            document.getElementById('editOwner').value = schedule.owner || '';
+            const s = schedules.find(x => x.id === id);
+            document.getElementById('editName').value = s.name;
+            document.getElementById('editOwner').value = s.owner || '';
             document.getElementById('editModal').style.display = 'block';
         }
 
-        function closeEditModal() {
-            document.getElementById('editModal').style.display = 'none';
-            editingScheduleId = null;
-        }
+        function closeEditModal() { document.getElementById('editModal').style.display = 'none'; }
 
         function saveEdit() {
-            const schedule = schedules.find(s => s.id === editingScheduleId);
-            schedule.name = document.getElementById('editName').value.trim();
-            schedule.owner = document.getElementById('editOwner').value.trim();
-            saveSchedules();
-            closeEditModal();
-            renderScheduleTabs();
-            if (currentScheduleId === editingScheduleId) {
-                loadSchedule(currentScheduleId);
-            }
+            const s = schedules.find(x => x.id === editingScheduleId);
+            s.name = document.getElementById('editName').value;
+            s.owner = document.getElementById('editOwner').value;
+            saveSchedules(); closeEditModal(); renderScheduleTabs(); loadSchedule(s.id);
         }
 
         function deleteSchedule(id) {
-            if (!confirm('¿Estás seguro de eliminar este horario?')) return;
-            
+            if (!confirm('¿Borrar horario?')) return;
             schedules = schedules.filter(s => s.id !== id);
             saveSchedules();
-            
-            if (currentScheduleId === id) {
-                currentScheduleId = schedules.length > 0 ? schedules[0].id : null;
-            }
-            
+            currentScheduleId = schedules.length > 0 ? schedules[0].id : null;
             renderScheduleTabs();
-            
-            if (currentScheduleId) {
-                loadSchedule(currentScheduleId);
-            } else {
-                document.getElementById('scheduleContainer').innerHTML = `
-                    <div class="empty-state">
-                        <h3>No hay horarios creados</h3>
-                        <p>Crea tu primer horario usando el formulario de arriba</p>
-                    </div>
-                `;
-            }
+            if (currentScheduleId) loadSchedule(currentScheduleId);
+            else document.getElementById('scheduleContainer').innerHTML = '<div class="empty-state"><h3>Sin horarios</h3></div>';
         }
 
         function downloadSchedule(id) {
-            const schedule = schedules.find(s => s.id === id);
-            const dataStr = JSON.stringify(schedule, null, 2);
-            const dataBlob = new Blob([dataStr], {type: 'application/json'});
-            const url = URL.createObjectURL(dataBlob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `${schedule.name.replace(/\s+/g, '_')}.json`;
-            link.click();
-            URL.revokeObjectURL(url);
+            const s = schedules.find(x => x.id === id);
+            const blob = new Blob([JSON.stringify(s, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `${s.name}.json`; a.click();
         }
 
-        window.onclick = function(event) {
-            const editModal = document.getElementById('editModal');
-            const compareModal = document.getElementById('compareModal');
-            const customizeModal = document.getElementById('customizeModal');
-            
-            if (event.target === editModal) {
-                closeEditModal();
-            }
-            if (event.target === compareModal) {
-                closeCompareModal();
-            }
-            if (event.target === customizeModal) {
-                closeCustomizeModal();
-            }
-        }
-
+        // --- COMPARAR Y PERSONALIZAR ---
         function openCompareModal() {
-            if (schedules.length < 2) {
-                alert('Necesitas al menos 2 horarios para comparar');
-                return;
-            }
-
-            const checkboxContainer = document.getElementById('scheduleCheckboxes');
-            checkboxContainer.innerHTML = schedules.map(schedule => `
-                <div class="checkbox-item">
-                    <input type="checkbox" id="compare_${schedule.id}" value="${schedule.id}">
-                    <label for="compare_${schedule.id}">
-                        <strong>${schedule.name}</strong> - ${schedule.owner || 'Sin asignar'}
-                    </label>
-                </div>
+            if (schedules.length < 2) { alert('Necesitas 2 horarios'); return; }
+            document.getElementById('scheduleCheckboxes').innerHTML = schedules.map(s => `
+                <div class="checkbox-item"><input type="checkbox" id="c_${s.id}" value="${s.id}"> <label for="c_${s.id}">${s.name}</label></div>
             `).join('');
-
-            document.getElementById('comparisonResult').style.display = 'none';
             document.getElementById('compareModal').style.display = 'block';
         }
 
-        function closeCompareModal() {
-            document.getElementById('compareModal').style.display = 'none';
-        }
+        function closeCompareModal() { document.getElementById('compareModal').style.display = 'none'; }
 
         function compareSchedules() {
-            const selectedIds = Array.from(document.querySelectorAll('#scheduleCheckboxes input:checked'))
-                .map(cb => cb.value);
-
-            if (selectedIds.length < 2) {
-                alert('Selecciona al menos 2 horarios para comparar');
-                return;
-            }
-
-            const selectedSchedules = schedules.filter(s => selectedIds.includes(s.id));
+            const selectedIds = Array.from(document.querySelectorAll('#scheduleCheckboxes input:checked')).map(i => i.value);
+            if (selectedIds.length < 2) return;
+            const selected = schedules.filter(s => selectedIds.includes(s.id));
+            const start = Math.max(...selected.map(s => s.startHour));
+            const end = Math.min(...selected.map(s => s.endHour));
             
-            // Encontrar el rango de horas común
-            const maxStart = Math.max(...selectedSchedules.map(s => s.startHour));
-            const minEnd = Math.min(...selectedSchedules.map(s => s.endHour));
-
-            if (maxStart >= minEnd) {
-                document.getElementById('comparisonResult').innerHTML = `
-                    <div class="no-availability">
-                        ⚠️ Los horarios seleccionados no tienen un rango de horas en común
-                    </div>
-                `;
-                document.getElementById('comparisonResult').style.display = 'block';
-                return;
-            }
-
-            const commonHours = getHoursArray(maxStart, minEnd);
-            const results = [];
-
-            // Analizar cada día
-            days.forEach(day => {
-                const freeSlots = [];
-                
-                commonHours.forEach(hour => {
-                    const key = `${day}-${hour}`;
-                    
-                    // Verificar si todos los horarios están libres en esta celda
-                    const allFree = selectedSchedules.every(schedule => {
-                        const cell = schedule.data[key];
-                        return !cell || !cell.text || cell.text.trim() === '';
-                    });
-
-                    if (allFree) {
-                        freeSlots.push(hour);
-                    }
-                });
-
-                results.push({
-                    day: day,
-                    freeSlots: freeSlots
-                });
+            if (start >= end) { alert('No hay horas comunes'); return; }
+            const common = getHoursArray(start, end);
+            let html = `<div class="availability-info">Comunes entre: ${selected.map(s => s.name).join(', ')}</div>`;
+            
+            days.forEach(d => {
+                const free = common.filter(h => selected.every(s => !s.data[`${d}-${h}`] || !s.data[`${d}-${h}`].text.trim()));
+                html += `<div class="day-result"><h4>${d}</h4>${free.length ? free.map(f => `<span class="free-slot">${f}</span>`).join(' ') : 'Sin huecos'}</div>`;
             });
-
-            // Mostrar resultados
-            const resultHTML = `
-                <div class="availability-info">
-                    <strong>📊 Comparando ${selectedSchedules.length} horarios:</strong><br>
-                    ${selectedSchedules.map(s => `• ${s.name} (${s.owner || 'Sin asignar'})`).join('<br>')}
-                </div>
-                ${results.map(result => `
-                    <div class="day-result">
-                        <h4>📅 ${result.day}</h4>
-                        ${result.freeSlots.length > 0 ? `
-                            <p style="color: #4CAF50; font-weight: bold;">✅ Hay ${result.freeSlots.length} hora(s) disponible(s) en común:</p>
-                            <div class="free-slots">
-                                ${result.freeSlots.map(slot => `<div class="free-slot">${slot}</div>`).join('')}
-                            </div>
-                        ` : `
-                            <div class="no-availability">
-                                ❌ No hay horas disponibles en común este día
-                            </div>
-                        `}
-                    </div>
-                `).join('')}
-            `;
-
-            document.getElementById('comparisonResult').innerHTML = resultHTML;
+            document.getElementById('comparisonResult').innerHTML = html;
             document.getElementById('comparisonResult').style.display = 'block';
         }
 
-        window.onclick = function(event) {
-            const modal = document.getElementById('editModal');
-            if (event.target === modal) {
-                closeEditModal();
-            }
-        }
+        function openCustomizeModal() { document.getElementById('customizeModal').style.display = 'block'; }
+        function closeCustomizeModal() { document.getElementById('customizeModal').style.display = 'none'; }
 
-        // Inicializar
+        window.onclick = (e) => {
+            if (e.target.className === 'modal') {
+                closeEditModal(); closeCompareModal(); closeCustomizeModal();
+            }
+        };
+
+        // Inicio
         applyCustomization();
         renderScheduleTabs();
-        if (schedules.length > 0) {
-            loadSchedule(schedules[0].id);
-        }
+        if (schedules.length > 0) loadSchedule(schedules[0].id);
     </script>
 </body>
 </html>
