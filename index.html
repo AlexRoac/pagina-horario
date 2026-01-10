@@ -828,12 +828,24 @@
 
         // --- FUNCIONES DE HORARIOS ---
         function getHoursArray(start, end) {
-            const hours = [];
-            for (let h = start; h < end; h++) {
-                hours.push(`${h.toString().padStart(2, '0')}:00`);
-                hours.push(`${h.toString().padStart(2, '0')}:30`);
+            const ranges = [];
+            let current = start * 60;   // minutos
+            const endMinutes = end * 60;
+
+            while (current < endMinutes) {
+                const next = current + 30;
+
+                const h1 = Math.floor(current / 60).toString().padStart(2, '0');
+                const m1 = (current % 60).toString().padStart(2, '0');
+
+                const h2 = Math.floor(next / 60).toString().padStart(2, '0');
+                const m2 = (next % 60).toString().padStart(2, '0');
+
+                ranges.push(`${h1}:${m1} - ${h2}:${m2}`);
+                current = next;
             }
-            return hours;
+
+            return ranges;
         }
 
         function generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2); }
