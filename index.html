@@ -829,7 +829,10 @@
         // --- FUNCIONES DE HORARIOS ---
         function getHoursArray(start, end) {
             const hours = [];
-            for (let i = start; i < end; i++) hours.push(`${i.toString().padStart(2, '0')}:00`);
+            for (let h = start; h < end; h++) {
+                hours.push(`${h.toString().padStart(2, '0')}:00`);
+                hours.push(`${h.toString().padStart(2, '0')}:30`);
+            }
             return hours;
         }
 
