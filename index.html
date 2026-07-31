@@ -114,6 +114,52 @@
             transform: translateY(-2px);
         }
 
+        .db-status {
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: 8px;
+            background: #fff3cd;
+            color: #664d03;
+            border: 1px solid #ffecb5;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .db-status.ok {
+            background: #d1e7dd;
+            color: #0f5132;
+            border-color: #badbcc;
+        }
+
+        .db-status.error {
+            background: #f8d7da;
+            color: #842029;
+            border-color: #f5c2c7;
+        }
+
+        .auth-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .auth-user {
+            color: #333;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .btn-login {
+            background: #ffffff !important;
+            color: #333 !important;
+            border-color: #ddd !important;
+        }
+
+        .btn-logout {
+            background: #f44336 !important;
+        }
+
         .btn-compare {
             background: #ff9800;
             color: white;
@@ -584,6 +630,12 @@
         </div>
 
         <div class="controls">
+            <div id="dbStatus" class="db-status">Conectando con Firebase...</div>
+            <div class="auth-actions">
+                <button id="loginButton" class="btn-login" onclick="signInWithGoogle()">Entrar con Google</button>
+                <button id="logoutButton" class="btn-logout" onclick="signOutUser()" style="display: none;">Salir</button>
+                <span id="authUser" class="auth-user"></span>
+            </div>
             <input type="text" id="scheduleName" placeholder="Nombre del horario">
             <input type="text" id="scheduleOwner" placeholder="Para quién es este horario">
             <div class="time-range">
@@ -747,6 +799,7 @@
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script>
         const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -761,6 +814,9 @@
         };
 
         let db = null;
+        let auth = null;
+        let currentUser = null;
+        let unsubscribeSchedules = null;
         let schedulesCollection = null;
         let schedules = [];
         let currentScheduleId = null;
@@ -891,9 +947,52 @@
             document.getElementById('scheduleTabs').innerHTML = `<p>${message}</p>`;
         }
 
+        function setDbStatus(message, type = '') {
+            const status = document.getElementById('dbStatus');
+            status.textContent = message;
+            status.className = `db-status ${type}`.trim();
+        }
+
+        function setControlsEnabled(enabled) {
+            ['scheduleName', 'scheduleOwner', 'startHour', 'endHour', 'importInput'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.disabled = !enabled;
+            });
+            document.querySelectorAll('.controls button, .color-btn, .btn-compare, .btn-customize').forEach(el => {
+                if (el.id === 'loginButton' || el.id === 'logoutButton') return;
+                el.disabled = !enabled;
+            });
+        }
+
+        function setAuthUi(user) {
+            document.getElementById('loginButton').style.display = user ? 'none' : 'inline-block';
+            document.getElementById('logoutButton').style.display = user ? 'inline-block' : 'none';
+            document.getElementById('authUser').textContent = user ? `Sesion: ${user.displayName || user.email}` : '';
+            setControlsEnabled(!!user);
+        }
+
+        function resetSchedulesUi(title, message) {
+            schedules = [];
+            currentScheduleId = null;
+            schedulesCollection = null;
+            renderScheduleTabs();
+            showScheduleMessage(title, message);
+        }
+
+        function getFirebaseErrorMessage(error) {
+            if (!error) return 'Error desconocido.';
+            if (error.code === 'permission-denied') return 'Firestore rechazo la operacion: revisa las reglas.';
+            if (error.code === 'unavailable') return 'Firestore no esta disponible: revisa tu conexion.';
+            if (error.code === 'failed-precondition') return 'Firestore necesita un indice o configuracion adicional.';
+            if (error.code === 'auth/unauthorized-domain') return 'Este dominio no esta autorizado en Firebase Auth.';
+            if (error.code === 'auth/popup-closed-by-user') return 'Se cerro la ventana de Google antes de terminar.';
+            if (error.code === 'auth/operation-not-allowed') return 'Activa Google como proveedor de inicio de sesion en Firebase Auth.';
+            return `${error.code || 'error'}: ${error.message || error}`;
+        }
+
         function ensureFirestoreReady() {
             if (schedulesCollection) return true;
-            alert('Configura Firebase en index.html antes de guardar horarios.');
+            alert('Inicia sesion con Google antes de usar horarios.');
             return false;
         }
 
@@ -911,15 +1010,25 @@
         async function saveSchedule(schedule) {
             if (!ensureFirestoreReady()) return;
             try {
+                setDbStatus('Guardando cambios en Firestore...');
                 await schedulesCollection.doc(schedule.id).set(schedulePayload(schedule), { merge: true });
+                setDbStatus('Conectado a Firestore. Cambios guardados.', 'ok');
             } catch (error) {
                 console.error(error);
-                alert('No se pudo guardar el horario. Revisa la conexion y las reglas de Firestore.');
+                const message = getFirebaseErrorMessage(error);
+                setDbStatus(message, 'error');
+                alert(`No se pudo guardar el horario. ${message}`);
             }
         }
 
         function subscribeToSchedules() {
-            schedulesCollection.orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+            if (unsubscribeSchedules) {
+                unsubscribeSchedules();
+                unsubscribeSchedules = null;
+            }
+            setDbStatus('Conectando con Firestore...');
+            unsubscribeSchedules = schedulesCollection.orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+                setDbStatus(`Conectado a Firestore. Horarios cargados: ${snapshot.size}`, 'ok');
                 schedules = snapshot.docs.map(doc => normalizeSchedule(doc.data(), doc.id));
 
                 if (schedules.length === 0) {
@@ -937,31 +1046,95 @@
                 loadSchedule(currentScheduleId);
             }, error => {
                 console.error(error);
+                const message = getFirebaseErrorMessage(error);
+                setDbStatus(message, 'error');
                 setScheduleTabsMessage('Error al cargar horarios');
-                showScheduleMessage('No se pudo conectar con Firestore', 'Revisa tu configuracion de Firebase y las reglas de Firestore.');
+                showScheduleMessage('No se pudo conectar con Firestore', message);
             });
+        }
+
+        async function signInWithGoogle() {
+            if (!auth) {
+                alert('Firebase Auth todavia no esta listo.');
+                return;
+            }
+
+            const provider = new firebase.auth.GoogleAuthProvider();
+            try {
+                setDbStatus('Abriendo inicio de sesion con Google...');
+                await auth.signInWithPopup(provider);
+            } catch (error) {
+                console.error(error);
+                const message = getFirebaseErrorMessage(error);
+                setDbStatus(message, 'error');
+                alert(`No se pudo iniciar sesion. ${message}`);
+            }
+        }
+
+        async function signOutUser() {
+            if (!auth) return;
+
+            try {
+                await auth.signOut();
+            } catch (error) {
+                console.error(error);
+                const message = getFirebaseErrorMessage(error);
+                setDbStatus(message, 'error');
+                alert(`No se pudo cerrar sesion. ${message}`);
+            }
+        }
+
+        function handleAuthStateChanged(user) {
+            currentUser = user;
+            setAuthUi(user);
+
+            if (unsubscribeSchedules) {
+                unsubscribeSchedules();
+                unsubscribeSchedules = null;
+            }
+
+            if (!user) {
+                setDbStatus('Inicia sesion con Google para cargar tus horarios.');
+                resetSchedulesUi('Inicia sesion', 'Usa el boton Entrar con Google para ver y guardar tus horarios.');
+                return;
+            }
+
+            schedulesCollection = db.collection('users').doc(user.uid).collection('schedules');
+            setDbStatus(`Sesion iniciada como ${user.displayName || user.email}. Cargando horarios...`);
+            subscribeToSchedules();
         }
 
         function initFirebase() {
             if (!hasFirebaseConfig()) {
+                setDbStatus('Firebase no esta configurado.', 'error');
                 setScheduleTabsMessage('Firebase pendiente');
                 showScheduleMessage('Configura Firebase', 'Pega tu firebaseConfig en index.html para activar la base de datos.');
                 return;
             }
 
             if (!window.firebase) {
+                setDbStatus('No se cargo el SDK de Firebase.', 'error');
                 showScheduleMessage('No se pudo cargar Firebase', 'Revisa tu conexion a internet o los scripts de Firebase.');
                 return;
             }
 
             try {
+                setDbStatus('Inicializando Firebase...');
                 firebase.initializeApp(firebaseConfig);
                 db = firebase.firestore();
-                schedulesCollection = db.collection('schedules');
-                subscribeToSchedules();
+                auth = firebase.auth();
+                setAuthUi(null);
+                auth.onAuthStateChanged(handleAuthStateChanged, error => {
+                    console.error(error);
+                    const message = getFirebaseErrorMessage(error);
+                    setDbStatus(message, 'error');
+                    showScheduleMessage('Error de sesion', message);
+                });
             } catch (error) {
                 console.error(error);
-                showScheduleMessage('Error al iniciar Firebase', 'Revisa tu firebaseConfig en index.html.');
+                const message = getFirebaseErrorMessage(error);
+                setDbStatus(message, 'error');
+                showScheduleMessage('Error al iniciar Firebase', message);
             }
         }
 
@@ -986,7 +1159,9 @@
                 document.getElementById('scheduleName').value = '';
             } catch (error) {
                 console.error(error);
-                alert('No se pudo crear el horario. Revisa la conexion y las reglas de Firestore.');
+                const message = getFirebaseErrorMessage(error);
+                setDbStatus(message, 'error');
+                alert(`No se pudo crear el horario. ${message}`);
             }
         }
 
@@ -1020,6 +1195,9 @@
                     alert(`✅ Horario "${importedData.name}" importado con éxito.`);
                     input.value = ''; // Limpiar el input
                 } catch (err) {
+                    console.error(err);
+                    const message = getFirebaseErrorMessage(err);
+                    setDbStatus(message, 'error');
                     alert("❌ Error: El archivo no es un horario válido.");
                 }
             };
@@ -1124,9 +1302,17 @@
         async function deleteSchedule(id) {
             if (!ensureFirestoreReady()) return;
             if (!confirm('¿Borrar horario?')) return;
-            await schedulesCollection.doc(id).delete();
-            if (currentScheduleId === id) {
-                currentScheduleId = null;
+            try {
+                await schedulesCollection.doc(id).delete();
+                if (currentScheduleId === id) {
+                    currentScheduleId = null;
+                }
+                setDbStatus('Horario eliminado.', 'ok');
+            } catch (error) {
+                console.error(error);
+                const message = getFirebaseErrorMessage(error);
+                setDbStatus(message, 'error');
+                alert(`No se pudo borrar el horario. ${message}`);
             }
         }
 
