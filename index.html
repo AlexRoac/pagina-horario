@@ -746,10 +746,23 @@
         </div>
     </div>
 
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script>
         const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
         
-        let schedules = JSON.parse(localStorage.getItem('schedules')) || [];
+        const firebaseConfig = {
+            apiKey: "AIzaSyDRY8N-WBCEA7YGqyl01RYOEjaijq7Bt68",
+            authDomain: "gestion-horarios-4d922.firebaseapp.com",
+            projectId: "gestion-horarios-4d922",
+            storageBucket: "gestion-horarios-4d922.firebasestorage.app",
+            messagingSenderId: "810606602234",
+            appId: "1:810606602234:web:19014178312e5c1edca643"
+        };
+
+        let db = null;
+        let schedulesCollection = null;
+        let schedules = [];
         let currentScheduleId = null;
         let selectedColor = '#ffcdd2';
         let editingScheduleId = null;
@@ -850,9 +863,110 @@
 
         function generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2); }
 
-        function saveSchedules() { localStorage.setItem('schedules', JSON.stringify(schedules)); }
+        function hasFirebaseConfig() {
+            return firebaseConfig.apiKey !== "TU_API_KEY" && firebaseConfig.projectId !== "TU_PROJECT_ID";
+        }
 
-        function createSchedule() {
+        function normalizeSchedule(data, id) {
+            return {
+                id,
+                name: data.name || 'Horario sin nombre',
+                owner: data.owner || '',
+                startHour: Number.isInteger(data.startHour) ? data.startHour : 6,
+                endHour: Number.isInteger(data.endHour) ? data.endHour : 22,
+                data: data.data || {}
+            };
+        }
+
+        function showScheduleMessage(title, message) {
+            document.getElementById('scheduleContainer').innerHTML = `
+                <div class="empty-state">
+                    <h3>${title}</h3>
+                    <p>${message}</p>
+                </div>
+            `;
+        }
+
+        function setScheduleTabsMessage(message) {
+            document.getElementById('scheduleTabs').innerHTML = `<p>${message}</p>`;
+        }
+
+        function ensureFirestoreReady() {
+            if (schedulesCollection) return true;
+            alert('Configura Firebase en index.html antes de guardar horarios.');
+            return false;
+        }
+
+        function schedulePayload(schedule) {
+            return {
+                name: schedule.name,
+                owner: schedule.owner || '',
+                startHour: schedule.startHour,
+                endHour: schedule.endHour,
+                data: schedule.data || {},
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+        }
+
+        async function saveSchedule(schedule) {
+            if (!ensureFirestoreReady()) return;
+            try {
+                await schedulesCollection.doc(schedule.id).set(schedulePayload(schedule), { merge: true });
+            } catch (error) {
+                console.error(error);
+                alert('No se pudo guardar el horario. Revisa la conexion y las reglas de Firestore.');
+            }
+        }
+
+        function subscribeToSchedules() {
+            schedulesCollection.orderBy('createdAt', 'desc').onSnapshot(snapshot => {
+                schedules = snapshot.docs.map(doc => normalizeSchedule(doc.data(), doc.id));
+
+                if (schedules.length === 0) {
+                    currentScheduleId = null;
+                    renderScheduleTabs();
+                    showScheduleMessage('No hay horarios creados', 'Crea tu primer horario usando el formulario de arriba');
+                    return;
+                }
+
+                if (!currentScheduleId || !schedules.some(s => s.id === currentScheduleId)) {
+                    currentScheduleId = schedules[0].id;
+                }
+
+                renderScheduleTabs();
+                loadSchedule(currentScheduleId);
+            }, error => {
+                console.error(error);
+                setScheduleTabsMessage('Error al cargar horarios');
+                showScheduleMessage('No se pudo conectar con Firestore', 'Revisa tu configuracion de Firebase y las reglas de Firestore.');
+            });
+        }
+
+        function initFirebase() {
+            if (!hasFirebaseConfig()) {
+                setScheduleTabsMessage('Firebase pendiente');
+                showScheduleMessage('Configura Firebase', 'Pega tu firebaseConfig en index.html para activar la base de datos.');
+                return;
+            }
+
+            if (!window.firebase) {
+                showScheduleMessage('No se pudo cargar Firebase', 'Revisa tu conexion a internet o los scripts de Firebase.');
+                return;
+            }
+
+            try {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.firestore();
+                schedulesCollection = db.collection('schedules');
+                subscribeToSchedules();
+            } catch (error) {
+                console.error(error);
+                showScheduleMessage('Error al iniciar Firebase', 'Revisa tu firebaseConfig en index.html.');
+            }
+        }
+
+        async function createSchedule() {
+            if (!ensureFirestoreReady()) return;
             const name = document.getElementById('scheduleName').value.trim();
             const owner = document.getElementById('scheduleOwner').value.trim();
             const startHour = parseInt(document.getElementById('startHour').value);
@@ -861,21 +975,32 @@
             if (!name) { alert('Por favor ingresa un nombre'); return; }
             if (startHour >= endHour) { alert('La hora inicio debe ser menor a la fin'); return; }
 
-            const schedule = { id: generateId(), name, owner, startHour, endHour, data: {} };
-            schedules.push(schedule);
-            saveSchedules();
-            renderScheduleTabs();
-            loadSchedule(schedule.id);
-            document.getElementById('scheduleName').value = '';
+            const id = generateId();
+            const schedule = { id, name, owner, startHour, endHour, data: {} };
+            try {
+                await schedulesCollection.doc(id).set({
+                    ...schedulePayload(schedule),
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                currentScheduleId = id;
+                document.getElementById('scheduleName').value = '';
+            } catch (error) {
+                console.error(error);
+                alert('No se pudo crear el horario. Revisa la conexion y las reglas de Firestore.');
+            }
         }
 
         // --- NUEVA FUNCIÓN DE IMPORTACIÓN ---
         function importSchedule(input) {
+            if (!ensureFirestoreReady()) {
+                input.value = '';
+                return;
+            }
             const file = input.files[0];
             if (!file) return;
 
             const reader = new FileReader();
-            reader.onload = function(e) {
+            reader.onload = async function(e) {
                 try {
                     const importedData = JSON.parse(e.target.result);
                     
@@ -884,13 +1009,13 @@
                         throw new Error("Formato inválido");
                     }
 
-                    // Generamos un nuevo ID para evitar duplicados si se importa el mismo archivo
-                    importedData.id = generateId();
-                    
-                    schedules.push(importedData);
-                    saveSchedules();
-                    renderScheduleTabs();
-                    loadSchedule(importedData.id);
+                    const id = generateId();
+                    const schedule = normalizeSchedule(importedData, id);
+                    await schedulesCollection.doc(id).set({
+                        ...schedulePayload(schedule),
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    currentScheduleId = id;
                     
                     alert(`✅ Horario "${importedData.name}" importado con éxito.`);
                     input.value = ''; // Limpiar el input
@@ -954,19 +1079,21 @@
             `;
         }
 
-        function editCell(sid, key, el) {
+        async function editCell(sid, key, el) {
+            if (!ensureFirestoreReady()) return;
             const s = schedules.find(x => x.id === sid);
             if (!s.data[key]) s.data[key] = { text: '', color: '#fff' };
             s.data[key].color = selectedColor;
             el.style.backgroundColor = selectedColor;
-            saveSchedules();
+            await saveSchedule(s);
         }
 
-        function updateCell(sid, key, val) {
+        async function updateCell(sid, key, val) {
+            if (!ensureFirestoreReady()) return;
             const s = schedules.find(x => x.id === sid);
             if (!s.data[key]) s.data[key] = { text: '', color: '#fff' };
             s.data[key].text = val;
-            saveSchedules();
+            await saveSchedule(s);
         }
 
         function selectColor(c) {
@@ -985,21 +1112,22 @@
 
         function closeEditModal() { document.getElementById('editModal').style.display = 'none'; }
 
-        function saveEdit() {
+        async function saveEdit() {
+            if (!ensureFirestoreReady()) return;
             const s = schedules.find(x => x.id === editingScheduleId);
             s.name = document.getElementById('editName').value;
             s.owner = document.getElementById('editOwner').value;
-            saveSchedules(); closeEditModal(); renderScheduleTabs(); loadSchedule(s.id);
+            await saveSchedule(s);
+            closeEditModal();
         }
 
-        function deleteSchedule(id) {
+        async function deleteSchedule(id) {
+            if (!ensureFirestoreReady()) return;
             if (!confirm('¿Borrar horario?')) return;
-            schedules = schedules.filter(s => s.id !== id);
-            saveSchedules();
-            currentScheduleId = schedules.length > 0 ? schedules[0].id : null;
-            renderScheduleTabs();
-            if (currentScheduleId) loadSchedule(currentScheduleId);
-            else document.getElementById('scheduleContainer').innerHTML = '<div class="empty-state"><h3>Sin horarios</h3></div>';
+            await schedulesCollection.doc(id).delete();
+            if (currentScheduleId === id) {
+                currentScheduleId = null;
+            }
         }
 
         function downloadSchedule(id) {
@@ -1051,8 +1179,7 @@
 
         // Inicio
         applyCustomization();
-        renderScheduleTabs();
-        if (schedules.length > 0) loadSchedule(schedules[0].id);
+        initFirebase();
     </script>
 </body>
 </html>
